@@ -1,890 +1,661 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useCallback, useRef, useState } from "react";
+import ReactFlow, {
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  Handle,
+  Position,
+} from "reactflow";
+import "reactflow/dist/style.css";
 
-// React Flow Components - using direct imports
-const ReactFlow = ({
-  children,
-  nodes,
-  edges,
-  onNodesChange,
-  onEdgesChange,
-  onConnect,
-  nodeTypes,
-  fitView,
-  className,
-  zoom,
-  onZoomChange,
-  isLocked,
-  onNodeDrag,
-}) => {
-  const containerRef = useRef(null);
-  const [dragState, setDragState] = useState({
-    isDragging: false,
-    draggedNode: null,
-    offset: { x: 0, y: 0 },
-  });
-
-  const handleMouseDown = (e, nodeId) => {
-    if (isLocked) return;
-
-    const rect = containerRef.current.getBoundingClientRect();
-    const node = nodes.find((n) => n.id === nodeId);
-
-    setDragState({
-      isDragging: true,
-      draggedNode: nodeId,
-      offset: {
-        x: (e.clientX - rect.left) / zoom - node.position.x,
-        y: (e.clientY - rect.top) / zoom - node.position.y,
-      },
-    });
+// ===== Utils =====
+const randomUser = () => {
+  const regions = ["US", "EU", "Asia"];
+  const names = ["Alex", "Jamie", "Taylor", "Sam", "Jordan", "Morgan"];
+  const getRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const age =
+    Math.random() < 0.3
+      ? Math.floor(Math.random() * 10) + 10
+      : Math.floor(Math.random() * 25) + 18;
+  const email =
+    Math.random() < 0.2
+      ? "invalid-email"
+      : getRandom(names).toLowerCase() + "@example.com";
+  return {
+    name: getRandom(names),
+    email,
+    region: getRandom(regions),
+    age,
+    registrationDate: new Date().toISOString(),
   };
+};
 
-  const handleMouseMove = (e) => {
-    if (!dragState.isDragging || isLocked) return;
+function validateUser(user) {
+  const errors = [];
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email)) {
+    errors.push("Invalid email");
+  }
+  if (user.age < 18) {
+    errors.push("User under 18");
+  }
+  return errors;
+}
 
-    const rect = containerRef.current.getBoundingClientRect();
-    const newPosition = {
-      x: (e.clientX - rect.left) / zoom - dragState.offset.x,
-      y: (e.clientY - rect.top) / zoom - dragState.offset.y,
-    };
+// ===== Custom Node Components =====
+const baseNodeStyle = {
+  padding: 16,
+  borderRadius: 16,
+  color: "#fff",
+  minWidth: 180,
+  minHeight: 80,
+  border: "3px solid #fff",
+  fontWeight: 700,
+  fontFamily: "Inter,sans-serif",
+  boxShadow: "0 4px 22px 0 rgba(22,76,167,0.1)",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  position: "relative",
+  backgroundClip: "padding-box",
+  cursor: "move",
+};
+const icons = {
+  start: "👤",
+  validator: "🧐",
+  error: "❌",
+  process: "🌎",
+  email: "✉️",
+};
 
-    onNodeDrag(dragState.draggedNode, newPosition);
-  };
-
-  const handleMouseUp = () => {
-    setDragState({
-      isDragging: false,
-      draggedNode: null,
-      offset: { x: 0, y: 0 },
-    });
-  };
-
+// Blue: User Registration
+function StartNode({ data }) {
   return (
     <div
-      ref={containerRef}
-      className={`w-full h-full relative ${className} ${
-        isLocked ? "cursor-not-allowed" : "cursor-default"
-      }`}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-      style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }}
+      style={{
+        ...baseNodeStyle,
+        background: "linear-gradient(135deg, #397bee 70%, #45e6fd)",
+        borderColor: "#2671e4",
+        paddingRight: 32,
+      }}
     >
-      <svg className="absolute inset-0 w-full h-full">
-        {/* Render edges with improved curves */}
-        {edges.map((edge) => {
-          const sourceNode = nodes.find((n) => n.id === edge.source);
-          const targetNode = nodes.find((n) => n.id === edge.target);
-          if (!sourceNode || !targetNode) return null;
-
-          const sourceX = sourceNode.position.x + 200;
-          const sourceY = sourceNode.position.y + 50;
-          const targetX = targetNode.position.x;
-          const targetY = targetNode.position.y + 50;
-
-          // Create a curved path
-          const midX = (sourceX + targetX) / 2;
-          const controlX1 = sourceX + 50;
-          const controlX2 = targetX - 50;
-
-          const pathData = `M ${sourceX} ${sourceY} C ${controlX1} ${sourceY}, ${controlX2} ${targetY}, ${targetX} ${targetY}`;
-
-          return (
-            <g key={edge.id}>
-              <path
-                d={pathData}
-                fill="none"
-                stroke={edge.style?.stroke || "#3b82f6"}
-                strokeWidth={edge.style?.strokeWidth || 2}
-                markerEnd="url(#arrowhead)"
-                className="drop-shadow-sm"
-              />
-              {edge.label && (
-                <text
-                  x={midX}
-                  y={(sourceY + targetY) / 2 - 10}
-                  textAnchor="middle"
-                  className="text-xs fill-gray-600 font-medium"
-                  style={{ fontSize: "10px" }}
-                >
-                  {edge.label}
-                </text>
-              )}
-            </g>
-          );
-        })}
-
-        {/* Enhanced Arrow marker */}
-        <defs>
-          <marker
-            id="arrowhead"
-            markerWidth="12"
-            markerHeight="10"
-            refX="12"
-            refY="5"
-            orient="auto"
-            markerUnits="strokeWidth"
-          >
-            <polygon
-              points="0 0, 12 5, 0 10"
-              fill="#3b82f6"
-              className="drop-shadow-sm"
-            />
-          </marker>
-        </defs>
-      </svg>
-
-      {/* Render nodes */}
-      {nodes.map((node) => {
-        const NodeComponent = nodeTypes[node.type];
-        return (
-          <div
-            key={node.id}
-            style={{
-              position: "absolute",
-              left: node.position.x,
-              top: node.position.y,
-              zIndex: 10,
-              cursor: isLocked ? "not-allowed" : "move",
-            }}
-            onMouseDown={(e) => handleMouseDown(e, node.id)}
-          >
-            <NodeComponent data={node.data} />
-          </div>
-        );
-      })}
-
-      {children}
+      <div style={{ fontSize: 28 }}>{icons.start}</div>
+      <div>User Registration</div>
+      <div style={{ fontSize: 12, opacity: 0.8 }}>
+        {data && data.user ? (
+          <>
+            <div>
+              <b>{data.user.name}</b> — {data.user.region}, {data.user.age}
+            </div>
+            <div>{data.user.email}</div>
+          </>
+        ) : (
+          <span style={{ fontStyle: "italic", color: "#e6e6e6" }}>
+            Submit to start
+          </span>
+        )}
+      </div>
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={{
+          background: "#397bee",
+          border: "2px solid #fff",
+          width: 14,
+          height: 14,
+          right: -7,
+          top: "50%",
+        }}
+        id="out"
+      />
     </div>
   );
-};
+}
 
-const Controls = ({
-  className,
-  zoom,
-  onZoomIn,
-  onZoomOut,
-  onFitView,
-  onFullscreen,
-  isLocked,
-  onToggleLock,
-}) => (
-  <div className={`absolute bottom-6 left-6 ${className}`}>
-    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-2 flex flex-col gap-1">
-      <button
-        onClick={onZoomIn}
-        className="p-3 hover:bg-gray-100 rounded-md transition-colors group relative"
-        title="Zoom In"
-      >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <circle cx="11" cy="11" r="8" />
-          <path d="21 21l-4.35-4.35" />
-          <line x1="11" y1="8" x2="11" y2="14" />
-          <line x1="8" y1="11" x2="14" y2="11" />
-        </svg>
-      </button>
-
-      <button
-        onClick={onZoomOut}
-        className="p-3 hover:bg-gray-100 rounded-md transition-colors group"
-        title="Zoom Out"
-      >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <circle cx="11" cy="11" r="8" />
-          <path d="21 21l-4.35-4.35" />
-          <line x1="8" y1="11" x2="14" y2="11" />
-        </svg>
-      </button>
-
-      <button
-        onClick={onFitView}
-        className="p-3 hover:bg-gray-100 rounded-md transition-colors"
-        title="Fit View"
-      >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-        </svg>
-      </button>
-
-      <button
-        onClick={onFullscreen}
-        className="p-3 hover:bg-gray-100 rounded-md transition-colors"
-        title="Fullscreen"
-      >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <path d="M3 3h6l-6 6V3zM21 3h-6l6 6V3zM21 21h-6l6-6v6zM3 21h6l-6-6v6z" />
-        </svg>
-      </button>
-
-      <div className="border-t border-gray-200 my-1"></div>
-
-      <button
-        onClick={onToggleLock}
-        className={`p-3 rounded-md transition-colors ${
-          isLocked
-            ? "bg-red-100 text-red-600 hover:bg-red-200"
-            : "hover:bg-gray-100"
-        }`}
-        title={isLocked ? "Unlock Layout" : "Lock Layout"}
-      >
-        {isLocked ? (
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <circle cx="12" cy="16" r="1" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
-        ) : (
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <circle cx="12" cy="16" r="1" />
-            <path d="M7 11V7a5 5 0 0 1 8.5 3.5" />
-          </svg>
-        )}
-      </button>
-
-      <div className="text-xs text-gray-500 text-center mt-2 px-1">
-        {Math.round(zoom * 100)}%
-      </div>
-    </div>
-  </div>
-);
-
-const MiniMap = ({ className, nodeColor, nodes }) => (
-  <div
-    className={`absolute top-6 right-6 w-56 h-36 ${className} rounded-lg p-3 shadow-lg border border-gray-200`}
-  >
-    <div className="text-xs text-gray-600 mb-2 font-medium">
-      Workflow Overview
-    </div>
-    <div className="relative w-full h-full bg-gray-50 rounded border">
-      {nodes.map((node, index) => (
-        <div
-          key={node.id}
-          className="absolute w-3 h-3 rounded-sm"
-          style={{
-            backgroundColor: nodeColor(node),
-            left: `${((index * 20) % 80) + 10}%`,
-            top: `${Math.floor(index / 4) * 25 + 20}%`,
-          }}
-        />
-      ))}
-    </div>
-  </div>
-);
-
-const Background = ({ variant, gap, size, className }) => (
-  <div className={`absolute inset-0 ${className}`}>
+// Orange: Validator
+function ValidatorNode({ data }) {
+  const errors = data?.validation?.errors;
+  return (
     <div
-      className="w-full h-full opacity-10"
       style={{
-        backgroundImage: `radial-gradient(circle, #9ca3af ${size}px, transparent ${size}px)`,
-        backgroundSize: `${gap}px ${gap}px`,
+        ...baseNodeStyle,
+        background: "linear-gradient(135deg, #fd9222 60%, #ffcc70)",
+        borderColor: "#fd9222",
+        paddingLeft: 30,
+        paddingRight: 30,
       }}
-    />
-  </div>
-);
-
-// Custom Node Components (Enhanced with better connection points)
-const UserRegistrationNode = ({ data }) => (
-  <div className="bg-blue-500 text-white p-4 rounded-lg shadow-lg min-w-[200px] border-2 border-blue-600 relative hover:shadow-xl transition-shadow">
-    {/* Output handle */}
-    <div className="absolute -right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-blue-300 rounded-full border-3 border-white shadow-md"></div>
-
-    <div className="flex items-center gap-3 mb-2">
-      <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-inner">
-        <span className="text-blue-500 font-bold text-xl">👤</span>
-      </div>
-      <h3 className="font-bold text-lg">User Registration</h3>
+    >
+      <div style={{ fontSize: 28 }}>{icons.validator}</div>
+      <div>Validator</div>
+      {data?.user && (
+        <div style={{ fontSize: 12, opacity: 0.9 }}>
+          Validating...
+          <ul style={{ margin: 0, paddingLeft: 16 }}>
+            <li>
+              Email: <b>{data.user.email}</b>
+            </li>
+            <li>
+              Age: <b>{data.user.age}</b>
+            </li>
+          </ul>
+        </div>
+      )}
+      {errors && (
+        <div style={{ color: "red", fontWeight: 600, marginTop: 4 }}>
+          {errors.join(", ")}
+        </div>
+      )}
+      {/* Target handle for input */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="in"
+        style={{
+          background: "#397bee",
+          border: "2px solid #fff",
+          width: 14,
+          height: 14,
+          left: -7,
+          top: "50%",
+        }}
+      />
+      {/* Error branch */}
+      <Handle
+        type="source"
+        position={Position.Top}
+        id="error"
+        style={{
+          background: "#ee406e",
+          border: "2px solid #fff",
+          width: 14,
+          height: 14,
+          left: "70%",
+          top: -7,
+        }}
+      />
+      {/* Success branch */}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="success"
+        style={{
+          background: "#6c47ec",
+          border: "2px solid #fff",
+          width: 14,
+          height: 14,
+          right: -7,
+          top: "50%",
+        }}
+      />
     </div>
-    <p className="text-sm opacity-90 mb-2">Generate user data</p>
-    {data.output && (
-      <div className="mt-3 p-3 bg-blue-600 rounded-md text-xs space-y-1">
-        <div>
-          <strong>Name:</strong> {data.output.name}
-        </div>
-        <div>
-          <strong>Email:</strong> {data.output.email}
-        </div>
-        <div>
-          <strong>Age:</strong> {data.output.age}
-        </div>
-        <div>
-          <strong>Region:</strong> {data.output.region}
-        </div>
-      </div>
-    )}
-  </div>
-);
+  );
+}
 
-const ValidatorNode = ({ data }) => (
-  <div className="bg-orange-500 text-white p-4 rounded-lg shadow-lg min-w-[200px] border-2 border-orange-600 relative hover:shadow-xl transition-shadow">
-    {/* Input handle */}
-    <div className="absolute -left-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-orange-300 rounded-full border-3 border-white shadow-md"></div>
-    {/* Output handles */}
-    <div className="absolute -right-3 top-1/3 transform -translate-y-1/2 w-6 h-6 bg-green-300 rounded-full border-3 border-white shadow-md"></div>
-    <div className="absolute -right-3 top-2/3 transform -translate-y-1/2 w-6 h-6 bg-red-300 rounded-full border-3 border-white shadow-md"></div>
-
-    <div className="flex items-center gap-3 mb-2">
-      <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-inner">
-        <span className="text-orange-500 font-bold text-xl">✓</span>
-      </div>
-      <h3 className="font-bold text-lg">Validator</h3>
+// Red: Error Handler
+function ErrorHandlerNode({ data }) {
+  return (
+    <div
+      style={{
+        ...baseNodeStyle,
+        background: "linear-gradient(133deg, #ee406e 60%, #fd5858 100%)",
+        borderColor: "#ee406e",
+        paddingLeft: 22,
+      }}
+    >
+      <div style={{ fontSize: 28 }}>{icons.error}</div>
+      <div>Error Handler</div>
+      {data?.validation && (
+        <div style={{ fontSize: 13, marginTop: 4 }}>
+          <div>
+            <b>Rejected:</b>
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 16 }}>
+            {(data.validation.errors || []).map((err) => (
+              <li key={err}>{err}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="in"
+        style={{
+          background: "#ee406e",
+          border: "2px solid #fff",
+          width: 14,
+          height: 14,
+          left: -7,
+          top: "50%",
+        }}
+      />
     </div>
-    <p className="text-sm opacity-90 mb-2">Age & Email validation</p>
-    {data.output && (
-      <div className="mt-3 p-3 bg-orange-600 rounded-md text-xs space-y-1">
-        <div>
-          <strong>Valid:</strong> {data.output.isValid ? "✅" : "❌"}
-        </div>
-        <div>
-          <strong>Reason:</strong> {data.output.reason}
-        </div>
-      </div>
-    )}
-  </div>
-);
+  );
+}
 
-const ErrorHandlerNode = ({ data }) => (
-  <div className="bg-red-500 text-white p-4 rounded-lg shadow-lg min-w-[200px] border-2 border-red-600 relative hover:shadow-xl transition-shadow">
-    {/* Input handle */}
-    <div className="absolute -left-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-red-300 rounded-full border-3 border-white shadow-md"></div>
-
-    <div className="flex items-center gap-3 mb-2">
-      <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-inner">
-        <span className="text-red-500 font-bold text-xl">⚠️</span>
-      </div>
-      <h3 className="font-bold text-lg">Error Handler</h3>
+// Purple: Region Processor
+function RegionProcessNode({ data }) {
+  return (
+    <div
+      style={{
+        ...baseNodeStyle,
+        background: "linear-gradient(133deg, #6c47ec 60%, #7d53f2 100%)",
+        borderColor: "#6c47ec",
+        paddingLeft: 22,
+        paddingRight: 22,
+      }}
+    >
+      <div style={{ fontSize: 28 }}>{icons.process}</div>
+      <div>Region Process</div>
+      {data?.user && (
+        <div style={{ fontSize: 13 }}>
+          <div>
+            Region: <b>{data.user.region}</b>
+          </div>
+          <div>
+            Policy:{" "}
+            <span
+              style={{
+                background: "#c4b5fd",
+                color: "#5432b3",
+                borderRadius: 4,
+                padding: "1px 6px",
+                fontWeight: 600,
+              }}
+            >
+              {data.regionPolicy}
+            </span>
+          </div>
+        </div>
+      )}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="in"
+        style={{
+          background: "#6c47ec",
+          border: "2px solid #fff",
+          width: 14,
+          height: 14,
+          left: -7,
+          top: "50%",
+        }}
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="out"
+        style={{
+          background: "#33c967",
+          border: "2px solid #fff",
+          width: 14,
+          height: 14,
+          right: -7,
+          top: "50%",
+        }}
+      />
     </div>
-    <p className="text-sm opacity-90 mb-2">Handle validation errors</p>
-    {data.output && (
-      <div className="mt-3 p-3 bg-red-600 rounded-md text-xs space-y-1">
-        <div>
-          <strong>Error:</strong> {data.output.error}
-        </div>
-        <div>
-          <strong>Action:</strong> {data.output.action}
-        </div>
-      </div>
-    )}
-  </div>
-);
+  );
+}
 
-const RegionProcessNode = ({ data }) => (
-  <div className="bg-purple-500 text-white p-4 rounded-lg shadow-lg min-w-[200px] border-2 border-purple-600 relative hover:shadow-xl transition-shadow">
-    {/* Input handle */}
-    <div className="absolute -left-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-purple-300 rounded-full border-3 border-white shadow-md"></div>
-    {/* Output handle */}
-    <div className="absolute -right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-purple-300 rounded-full border-3 border-white shadow-md"></div>
-
-    <div className="flex items-center gap-3 mb-2">
-      <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-inner">
-        <span className="text-purple-500 font-bold text-xl">🌍</span>
-      </div>
-      <h3 className="font-bold text-lg">Region Process</h3>
+// Green: Welcome Email
+function WelcomeEmailNode({ data }) {
+  return (
+    <div
+      style={{
+        ...baseNodeStyle,
+        background: "linear-gradient(133deg, #33c967 60%, #84fba2 100%)",
+        borderColor: "#33c967",
+        minWidth: 220,
+        paddingLeft: 22,
+        paddingRight: 22,
+      }}
+    >
+      <div style={{ fontSize: 28 }}>{icons.email}</div>
+      <div>Welcome Email</div>
+      {data?.user && (
+        <div style={{ fontSize: 13 }}>
+          <div>
+            Dear <b>{data.user.name}</b>,
+            <br />
+            Welcome to our {data.user.region} community!
+          </div>
+        </div>
+      )}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="in"
+        style={{
+          background: "#33c967",
+          border: "2px solid #fff",
+          width: 14,
+          height: 14,
+          left: -7,
+          top: "50%",
+        }}
+      />
     </div>
-    <p className="text-sm opacity-90 mb-2">Process by region</p>
-    {data.output && (
-      <div className="mt-3 p-3 bg-purple-600 rounded-md text-xs space-y-1">
-        <div>
-          <strong>Region:</strong> {data.output.region}
-        </div>
-        <div>
-          <strong>Currency:</strong> {data.output.currency}
-        </div>
-        <div>
-          <strong>Language:</strong> {data.output.language}
-        </div>
-      </div>
-    )}
-  </div>
-);
+  );
+}
 
-const WelcomeEmailNode = ({ data }) => (
-  <div className="bg-green-500 text-white p-4 rounded-lg shadow-lg min-w-[200px] border-2 border-green-600 relative hover:shadow-xl transition-shadow">
-    {/* Input handle */}
-    <div className="absolute -left-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-green-300 rounded-full border-3 border-white shadow-md"></div>
-
-    <div className="flex items-center gap-3 mb-2">
-      <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-inner">
-        <span className="text-green-500 font-bold text-xl">📧</span>
-      </div>
-      <h3 className="font-bold text-lg">Welcome Email</h3>
-    </div>
-    <p className="text-sm opacity-90 mb-2">Send welcome email</p>
-    {data.output && (
-      <div className="mt-3 p-3 bg-green-600 rounded-md text-xs space-y-1">
-        <div>
-          <strong>To:</strong> {data.output.recipient}
-        </div>
-        <div>
-          <strong>Subject:</strong> {data.output.subject}
-        </div>
-        <div>
-          <strong>Status:</strong> {data.output.status}
-        </div>
-      </div>
-    )}
-  </div>
-);
-
+// Node Types
 const nodeTypes = {
-  userRegistration: UserRegistrationNode,
+  start: StartNode,
   validator: ValidatorNode,
-  errorHandler: ErrorHandlerNode,
-  regionProcess: RegionProcessNode,
-  welcomeEmail: WelcomeEmailNode,
+  error: ErrorHandlerNode,
+  region: RegionProcessNode,
+  email: WelcomeEmailNode,
 };
 
+// ==== Initial Layout ====
 const initialNodes = [
   {
-    id: "1",
-    type: "userRegistration",
-    position: { x: 50, y: 200 },
-    data: { label: "User Registration" },
+    id: "start",
+    type: "start",
+    position: { x: 10, y: 210 },
+    data: {},
+    draggable: true,
   },
   {
-    id: "2",
+    id: "validator",
     type: "validator",
-    position: { x: 350, y: 200 },
-    data: { label: "Validator" },
+    position: { x: 260, y: 200 },
+    data: {},
+    draggable: true,
   },
   {
-    id: "3",
-    type: "errorHandler",
-    position: { x: 650, y: 100 },
-    data: { label: "Error Handler" },
+    id: "error",
+    type: "error",
+    position: { x: 540, y: 90 },
+    data: {},
+    draggable: true,
   },
   {
-    id: "4",
-    type: "regionProcess",
-    position: { x: 650, y: 300 },
-    data: { label: "Region Process" },
+    id: "region",
+    type: "region",
+    position: { x: 550, y: 320 },
+    data: {},
+    draggable: true,
   },
   {
-    id: "5",
-    type: "welcomeEmail",
-    position: { x: 950, y: 300 },
-    data: { label: "Welcome Email" },
+    id: "email",
+    type: "email",
+    position: { x: 800, y: 320 },
+    data: {},
+    draggable: true,
   },
 ];
 
+// Correct edge connection, multiple handles used for branching
 const initialEdges = [
   {
-    id: "e1-2",
-    source: "1",
-    target: "2",
-    style: { stroke: "#3b82f6", strokeWidth: 3 },
-    label: "User Data",
+    id: "e1",
+    source: "start",
+    sourceHandle: "out",
+    target: "validator",
+    targetHandle: "in",
+    type: "smoothstep",
+    animated: true,
+    style: { stroke: "#397bee", strokeWidth: 3 },
   },
   {
-    id: "e2-3",
-    source: "2",
-    target: "3",
-    style: { stroke: "#ef4444", strokeWidth: 3 },
-    label: "Invalid",
+    id: "e2",
+    source: "validator",
+    sourceHandle: "error",
+    target: "error",
+    targetHandle: "in",
+    type: "smoothstep",
+    animated: true,
+    style: { stroke: "#ee406e", strokeWidth: 3 },
   },
   {
-    id: "e2-4",
-    source: "2",
-    target: "4",
-    style: { stroke: "#22c55e", strokeWidth: 3 },
-    label: "Valid",
+    id: "e3",
+    source: "validator",
+    sourceHandle: "success",
+    target: "region",
+    targetHandle: "in",
+    type: "smoothstep",
+    animated: true,
+    style: { stroke: "#6c47ec", strokeWidth: 3 },
   },
   {
-    id: "e4-5",
-    source: "4",
-    target: "5",
-    style: { stroke: "#8b5cf6", strokeWidth: 3 },
-    label: "Processed",
+    id: "e4",
+    source: "region",
+    sourceHandle: "out",
+    target: "email",
+    targetHandle: "in",
+    type: "smoothstep",
+    animated: true,
+    style: { stroke: "#33c967", strokeWidth: 3 },
   },
 ];
 
-const ReactFlowWorkflow = () => {
-  const [nodes, setNodes] = useState(initialNodes);
-  const [edges] = useState(initialEdges);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const [isLocked, setIsLocked] = useState(false);
+// ======= Main App =======
+export default function FlowExample() {
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [isLocked, setIsLocked] = useState(false); // Track lock state
+  const userRef = useRef(null);
 
-  // Zoom controls
-  const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.1, 2));
-  const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.1, 0.3));
-  const handleFitView = () => setZoom(1);
+  // Update all nodes' draggable property based on lock state
+  const updateDraggable = useCallback(
+    (locked) => {
+      setNodes((nds) => nds.map((node) => ({ ...node, draggable: locked })));
+    },
+    [setNodes]
+  );
 
-  const handleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-    } else {
-      document.exitFullscreen();
-    }
-  };
+  // Listen to lock/unlock from Controls
+  const onLockChange = useCallback(
+    (locked) => {
+      setIsLocked(locked);
+      updateDraggable(locked);
+    },
+    [updateDraggable]
+  );
 
-  const handleToggleLock = () => setIsLocked((prev) => !prev);
-
-  const handleNodeDrag = useCallback((nodeId, newPosition) => {
+  const onSubmit = useCallback(() => {
+    const user = randomUser();
+    userRef.current = user;
     setNodes((nds) =>
       nds.map((node) =>
-        node.id === nodeId ? { ...node, position: newPosition } : node
+        node.id === "start" ? { ...node, data: { user } } : node
       )
     );
-  }, []);
+    setTimeout(() => validatorStep(user), 400);
+  }, [setNodes]);
 
-  // Generate random user data
-  const generateUserData = () => {
-    const names = [
-      "John Doe",
-      "Jane Smith",
-      "Alice Johnson",
-      "Bob Wilson",
-      "Charlie Brown",
-    ];
-    const domains = [
-      "gmail.com",
-      "yahoo.com",
-      "hotmail.com",
-      "example.com",
-      "invalid-email",
-    ];
-    const regions = ["US", "EU", "ASIA", "LATAM"];
-
-    const name = names[Math.floor(Math.random() * names.length)];
-    const email =
-      Math.random() > 0.3
-        ? `${name.toLowerCase().replace(" ", ".")}@${
-            domains[Math.floor(Math.random() * 4)]
-          }`
-        : `invalid-email@${domains[4]}`;
-
-    return {
-      id: Math.random().toString(36).substr(2, 9),
-      name,
-      email,
-      age: Math.floor(Math.random() * 50) + 15, // 15-65
-      region: regions[Math.floor(Math.random() * regions.length)],
-      timestamp: new Date().toISOString(),
-    };
-  };
-
-  // Validate user data
-  const validateUser = (userData) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const isValidEmail =
-      emailRegex.test(userData.email) &&
-      !userData.email.includes("invalid-email");
-    const isValidAge = userData.age >= 18;
-
-    let reason = "";
-    if (!isValidAge && !isValidEmail) {
-      reason = "Underage and invalid email";
-    } else if (!isValidAge) {
-      reason = "User is underage";
-    } else if (!isValidEmail) {
-      reason = "Invalid email format";
-    } else {
-      reason = "All validations passed";
-    }
-
-    return {
-      isValid: isValidAge && isValidEmail,
-      reason,
-      validatedAt: new Date().toISOString(),
-      ...userData,
-    };
-  };
-
-  // Process by region
-  const processRegion = (validatedData) => {
-    const regionConfig = {
-      US: { currency: "USD", language: "en-US", timezone: "America/New_York" },
-      EU: { currency: "EUR", language: "en-GB", timezone: "Europe/London" },
-      ASIA: { currency: "JPY", language: "ja-JP", timezone: "Asia/Tokyo" },
-      LATAM: {
-        currency: "BRL",
-        language: "pt-BR",
-        timezone: "America/Sao_Paulo",
-      },
-    };
-
-    const config = regionConfig[validatedData.region] || regionConfig.US;
-
-    return {
-      ...validatedData,
-      ...config,
-      processedAt: new Date().toISOString(),
-      welcomeBonus: validatedData.region === "US" ? 50 : 25,
-    };
-  };
-
-  // Generate welcome email
-  const generateWelcomeEmail = (processedData) => {
-    const subject = `Welcome ${processedData.name}! Your ${processedData.currency} bonus awaits`;
-
-    return {
-      ...processedData,
-      recipient: processedData.email,
-      subject,
-      body: `Dear ${processedData.name}, welcome to our platform! You've received a ${processedData.welcomeBonus} ${processedData.currency} bonus.`,
-      status: "Email prepared for sending",
-      emailId: Math.random().toString(36).substr(2, 9),
-      sentAt: new Date().toISOString(),
-    };
-  };
-
-  // Handle error cases
-  const handleError = (invalidData) => {
-    return {
-      ...invalidData,
-      error: invalidData.reason,
-      action: "User registration rejected",
-      errorCode: invalidData.age < 18 ? "AGE_RESTRICTION" : "INVALID_EMAIL",
-      handledAt: new Date().toISOString(),
-    };
-  };
-
-  const executeWorkflow = async () => {
-    setIsProcessing(true);
-
-    try {
-      // Step 1: User Registration
-      console.log("🔄 Starting workflow execution...");
-      const userData = generateUserData();
-      console.log(
-        "👤 User Registration Node Output:",
-        JSON.stringify(userData, null, 2)
-      );
-
-      setNodes((nds) =>
-        nds.map((node) =>
-          node.id === "1"
-            ? { ...node, data: { ...node.data, output: userData } }
-            : node
-        )
-      );
-
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Step 2: Validation
-      const validationResult = validateUser(userData);
-      console.log(
-        "✅ Validator Node Output:",
-        JSON.stringify(validationResult, null, 2)
-      );
-
-      setNodes((nds) =>
-        nds.map((node) =>
-          node.id === "2"
-            ? { ...node, data: { ...node.data, output: validationResult } }
-            : node
-        )
-      );
-
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      if (!validationResult.isValid) {
-        // Step 3a: Error Handler
-        const errorResult = handleError(validationResult);
-        console.log(
-          "❌ Error Handler Node Output:",
-          JSON.stringify(errorResult, null, 2)
-        );
-        console.log("🛑 Workflow terminated due to validation failure");
-
-        setNodes((nds) =>
-          nds.map((node) =>
-            node.id === "3"
-              ? { ...node, data: { ...node.data, output: errorResult } }
-              : node
-          )
-        );
-      } else {
-        // Step 3b: Region Processing
-        const regionResult = processRegion(validationResult);
-        console.log(
-          "🌍 Region Process Node Output:",
-          JSON.stringify(regionResult, null, 2)
-        );
-
-        setNodes((nds) =>
-          nds.map((node) =>
-            node.id === "4"
-              ? { ...node, data: { ...node.data, output: regionResult } }
-              : node
-          )
-        );
-
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        // Step 4: Welcome Email
-        const emailResult = generateWelcomeEmail(regionResult);
-        console.log(
-          "📧 Welcome Email Node Output:",
-          JSON.stringify(emailResult, null, 2)
-        );
-        console.log("✅ Workflow completed successfully!");
-
-        setNodes((nds) =>
-          nds.map((node) =>
-            node.id === "5"
-              ? { ...node, data: { ...node.data, output: emailResult } }
-              : node
-          )
-        );
-      }
-    } catch (error) {
-      console.error("❌ Workflow execution failed:", error);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const resetWorkflow = () => {
+  const validatorStep = (user) => {
+    const validation = { errors: validateUser(user) };
+    const validatorOut = { ...user, validation };
+    console.log("[ValidatorNode]", JSON.stringify(validatorOut, null, 2));
     setNodes((nds) =>
-      nds.map((node) => ({ ...node, data: { label: node.data.label } }))
+      nds.map((node) =>
+        node.id === "validator" ? { ...node, data: { user, validation } } : node
+      )
     );
-    console.clear();
+    setTimeout(() => {
+      if (validation.errors.length) {
+        errorHandlerStep(user, validation);
+      } else {
+        regionStep(user);
+      }
+    }, 600);
   };
+
+  const errorHandlerStep = (user, validation) => {
+    const out = { ...user, validation, failedAt: "validation" };
+    console.log("[ErrorHandlerNode]", JSON.stringify(out, null, 2));
+    setNodes((nds) =>
+      nds.map((node) =>
+        node.id === "error" ? { ...node, data: { validation } } : node
+      )
+    );
+    setNodes((nds) =>
+      nds.map((node) =>
+        ["region", "email"].includes(node.id) ? { ...node, data: {} } : node
+      )
+    );
+  };
+
+  const regionStep = (user) => {
+    let regionPolicy = "";
+    switch (user.region) {
+      case "US":
+        regionPolicy = "GDPR Not Required";
+        break;
+      case "EU":
+        regionPolicy = "GDPR Required";
+        break;
+      case "Asia":
+        regionPolicy = "APAC Policy";
+        break;
+      default:
+        regionPolicy = "Generic";
+    }
+    const regionResult = { ...user, regionPolicy };
+    console.log("[RegionProcessorNode]", JSON.stringify(regionResult, null, 2));
+    setNodes((nds) =>
+      nds.map((node) =>
+        node.id === "region" ? { ...node, data: { user, regionPolicy } } : node
+      )
+    );
+    setTimeout(() => emailStep(regionResult), 700);
+  };
+
+  const emailStep = (data) => {
+    const emailData = {
+      ...data,
+      welcomeMessage: `Dear ${data.name},\nWelcome to our ${data.region} community!`,
+    };
+    console.log("[WelcomeEmailNode]", JSON.stringify(emailData, null, 2));
+    setNodes((nds) =>
+      nds.map((node) =>
+        node.id === "email" ? { ...node, data: { user: emailData } } : node
+      )
+    );
+  };
+
+  // Style for App background panel
+  const gradientBg = "linear-gradient(90deg, #e6eefd 0%, #fff 100%)";
 
   return (
-    <div className="w-full h-screen bg-gradient-to-br from-gray-50 to-gray-100 relative overflow-hidden">
-      {/* Status Bar */}
-      <div className="absolute top-0 left-0 right-0 bg-white border-b border-gray-200 px-6 py-3 z-30 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold text-gray-800">
-            Enhanced React Flow Workflow
-          </h1>
-          {isLocked && (
-            <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-medium rounded-full flex items-center gap-1">
-              🔒 Layout Locked
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <span>Zoom: {Math.round(zoom * 100)}%</span>
-          <div className="w-2 h-2 rounded-full bg-green-400"></div>
-          <span>Ready</span>
-        </div>
-      </div>
+    <div
+      style={{
+        width: "100vw",
+        height: "100vh",
+        background: gradientBg,
+        fontFamily: "Inter, sans-serif",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {/* <div
+        style={{
+          padding: "24px 32px 0px 24px",
+          fontWeight: 800,
+          fontSize: 26,
+          color: "#2663d1",
+          letterSpacing: -1.5,
+        }}
+      >
+        🚀 Registration Workflow{" "}
+      </div> */}
 
-      {/* Control Panel */}
-      <div className="absolute top-20 left-4 z-20 bg-white p-4 rounded-lg shadow-lg max-w-sm border border-gray-200">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-          <h2 className="font-semibold text-gray-800">Workflow Controls</h2>
-        </div>
-        <p className="text-sm text-gray-600 mb-4">
-          User registration with validation, error handling, and email
-          processing.
-        </p>
-        <div className="flex gap-2 mb-3">
-          <button
-            onClick={executeWorkflow}
-            disabled={isProcessing}
-            className="bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 text-sm"
-          >
-            {isProcessing ? "⏳ Processing..." : "🚀 Execute Workflow"}
-          </button>
-          <button
-            onClick={resetWorkflow}
-            className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors text-sm"
-          >
-            🔄 Reset
-          </button>
-        </div>
-        <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-          💡 Open browser console to see detailed JSON logs
-        </div>
+      <div
+        style={{
+          padding: "8px 30px 6px 24px",
+          display: "flex",
+          gap: 16,
+          alignItems: "center",
+        }}
+      >
+        <button
+          style={{
+            background: "linear-gradient(89deg, #397bee 60%, #33c967 100%)",
+            color: "#fff",
+            fontWeight: 700,
+            fontSize: 17,
+            border: "none",
+            borderRadius: 10,
+            padding: "12px 26px",
+            boxShadow: "0 2px 16px #d1d9fb66",
+            cursor: "pointer",
+            marginRight: 12,
+            outline: "none",
+            marginTop: 8,
+          }}
+          onClick={onSubmit}
+        >
+          Submit
+        </button>
+        <button
+          style={{
+            background: "#e6eefd",
+            color: "#397bee",
+            fontWeight: 700,
+            fontSize: 17,
+            border: "1.5px solid #397bee",
+            borderRadius: 10,
+            padding: "12px 26px",
+            boxShadow: "0 2px 16px #d1d9fb33",
+            cursor: "pointer",
+            outline: "none",
+            marginTop: 8,
+          }}
+          onClick={() => {
+            setNodes(initialNodes);
+            setEdges(initialEdges);
+            userRef.current = null;
+          }}
+        >
+          Reset
+        </button>
       </div>
-
-      {/* React Flow Canvas */}
-      <div className="absolute inset-0 top-16">
+      <div style={{ flex: 1, minHeight: 480 }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
           fitView
-          className="bg-gray-50"
-          zoom={zoom}
-          onZoomChange={setZoom}
-          isLocked={isLocked}
-          onNodeDrag={handleNodeDrag}
+          panOnDrag
+          panOnScroll
+          zoomOnScroll
+          zoomOnPinch
+          minZoom={0.25}
+          maxZoom={1.5}
+          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+          attributionPosition="bottom-left"
         >
-          <Controls
-            className="bg-white border-gray-300"
-            zoom={zoom}
-            onZoomIn={handleZoomIn}
-            onZoomOut={handleZoomOut}
-            onFitView={handleFitView}
-            onFullscreen={handleFullscreen}
-            isLocked={isLocked}
-            onToggleLock={handleToggleLock}
-          />
+          <Background gap={32} size={1} color="#c7d4ee" variant="dots" />
           <MiniMap
-            className="bg-white border border-gray-300"
-            nodes={nodes}
-            nodeColor={(node) => {
-              switch (node.type) {
-                case "userRegistration":
-                  return "#3b82f6";
-                case "validator":
-                  return "#f97316";
-                case "errorHandler":
-                  return "#ef4444";
-                case "regionProcess":
-                  return "#8b5cf6";
-                case "welcomeEmail":
-                  return "#22c55e";
-                default:
-                  return "#6b7280";
-              }
-            }}
+            nodeColor={(n) =>
+              n.type === "start"
+                ? "#397bee"
+                : n.type === "validator"
+                ? "#fd9222"
+                : n.type === "error"
+                ? "#ee406e"
+                : n.type === "region"
+                ? "#6c47ec"
+                : n.type === "email"
+                ? "#33c967"
+                : "#999"
+            }
+            nodeStrokeWidth={2}
+            maskColor="#eeeefde9"
+            style={{ height: 75 }}
           />
-          <Background variant="dots" gap={25} size={1} className="bg-gray-50" />
+          <Controls
+            position="bottom-right"
+            onInteractiveChange={onLockChange}
+          />
         </ReactFlow>
       </div>
     </div>
   );
-};
-
-export default ReactFlowWorkflow;
+}
